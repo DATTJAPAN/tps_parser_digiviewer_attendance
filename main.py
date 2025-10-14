@@ -1,42 +1,42 @@
 import argparse
 from csv_reader import CsvReader
 import sys
+from pprint import pprint
+import json
+from data_set_initializer import DataSetInitializer
+from pre_process_csv import PreProcessCsv
 
 
 def main():
     parser = argparse.ArgumentParser(description='DigiViewer')
     parser.add_argument('--slim', action='store_true')
-    parser.add_argument('--get_rows', type=str, help='Comma-separated row IDs, e.g., A1,A2')
-    parser.add_argument('--parse_rows', action='store_true')
+    parser.add_argument('--vectorized', action='store_true')
 
     args = parser.parse_args()
 
-    csv_reader = CsvReader(args.slim)
+    # args var
+    _is_slim_ = args.slim
+    _call_vectorized_csv_reader_ = args.vectorized
 
-    if args.parse_rows and args.get_rows is None:
-        print("")
-        print("Please specify --get_rows when using --parse_rows.")
-        print("")
+    if _is_slim_:
+        print("Using slim data set.")
+        data_set_initializer = DataSetInitializer(_is_slim_)
+    else:
+        print("Using full data set.")
+        data_set_initializer = DataSetInitializer(False)
 
-        sys.exit(0)
 
-    if args.get_rows:
-        _ALLOWED_ROWS_ = {"A1", "A2", "A3", "A4"}
-        requested_rows = args.get_rows.split(',')  # fixed typo: args.get_row -> args.get_rows
 
-        if len(requested_rows) == 0:
-            # Default to all rows
-            requested_rows = ["A1", "A2", "A3", "A4"]
+    _data_type, _data_path, _data_encoding = data_set_initializer.get_data_config()
 
-        row_ids = [r.strip() for r in requested_rows]
-        # Check that all rows are allowed
-        for r in row_ids:
-            if r not in _ALLOWED_ROWS_:
-                print(f"Invalid row: {r}. Only A1 to A4 allowed.")
-                sys.exit(0)
+    pre_processor = PreProcessCsv(
+        file_path=_data_path,
+        encoding='utf-8'
+    )
 
-        csv_reader.handle_get_rows(row_ids=row_ids, parse_rows=args.parse_rows)
-        return
+    if _call_vectorized_csv_reader_:
+        result = pre_processor.process_to_workable_format()
+
 
 
 if __name__ == "__main__":
