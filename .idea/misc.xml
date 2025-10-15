@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="uv (digiviewer)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="uv (tps_parser_digiviewer_attendance)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="uv (digiviewer)" project-jdk-type="Python SDK" />
 </project>

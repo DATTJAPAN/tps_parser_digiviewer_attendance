@@ -1,4 +1,6 @@
 import re
+import sys
+from pprint import pprint
 from typing import List, Optional
 import pandas as pd
 import json
@@ -35,11 +37,14 @@ class PreProcessCsv:
     _data_A3_period: str = '11_20'
     _data_A4_period: str = '21_30'
     _data_A4_period_ext: str = '21_31'
+    _boundary_tag_start: str = '__$start$__'
+    _boundary_tag_end: str = '__$end$__'
+    _data_anchor_point: str = ["月", "火", "水", "木", "金", "土", "日"]
 
     def __init__(
             self,
             file_path: Optional[str] = None,
-            encoding: Optional[str] = 'utf-8',
+            encoding: Optional[str] = 'cp932',
     ):
         self.file_path = file_path
         self.encoding = encoding
@@ -49,9 +54,45 @@ class PreProcessCsv:
             self.file_path,
             header=None,
             encoding=self.encoding,
-            engine='python',
+            # engine='python',
             encoding_errors="ignore",
         )
+
+    def _extract_days_block(self, day_row: List[str] = None, parent_row: List[str] = None):
+
+        if day_row is None or parent_row is None:
+            raise ValueError("Day row and parent row cannot be empty")
+
+        _DAY_BLOCK_ = []
+
+        # Get the boundaries properly
+        # our anchor of the is the japanese "days" -> 月,火,水,木,金,土,日
+        _DAY_BOUNDARY_TRACKER_ = {"s": -1, "ns": -1}
+
+        for _index, _value in enumerate(day_row):
+            anchor_found = _value in self._data_anchor_point
+
+            # Check if the tracker is fully partner
+            if _DAY_BOUNDARY_TRACKER_["s"] != -1 and _DAY_BOUNDARY_TRACKER_["ns"] != -1:
+                _DAY_BLOCK_.append(parent_row[_DAY_BOUNDARY_TRACKER_['s']:_DAY_BOUNDARY_TRACKER_['ns']])
+
+                # Change the s will get the ns then ns -> -1 so we can start over the other data
+                _DAY_BOUNDARY_TRACKER_["s"] = _DAY_BOUNDARY_TRACKER_["ns"]
+                _DAY_BOUNDARY_TRACKER_["ns"] = -1
+
+            if anchor_found:
+                # Ensure first the first "s" is set"
+                if _DAY_BOUNDARY_TRACKER_["s"] == -1:
+                    _DAY_BOUNDARY_TRACKER_["s"] = _index
+                else:
+                    if _DAY_BOUNDARY_TRACKER_["ns"] == -1:
+                        _DAY_BOUNDARY_TRACKER_["ns"] = _index
+
+        # at the last iteration
+        if _DAY_BOUNDARY_TRACKER_["s"] != -1 and _DAY_BOUNDARY_TRACKER_["ns"] == -1:
+            _DAY_BLOCK_.append((parent_row[_DAY_BOUNDARY_TRACKER_["s"]:]))
+
+        return _DAY_BLOCK_
 
     def _process_format(self):
         df = self._read_file()
@@ -73,6 +114,9 @@ class PreProcessCsv:
             # Get the offset data without using the split to maintain the pre-split data
             _PRE_SPLIT_OFFSET_ROW_DATA_ = _ROW_DATA_[len(_REBUILD_ROW_COMPOSITE_ID_):-1]
 
+            # Remove the ":" in the beginning of the data
+            _PRE_SPLIT_OFFSET_ROW_DATA_STRIP_ = _PRE_SPLIT_OFFSET_ROW_DATA_.lstrip(":")
+
             if _ROW_COMPOSITE_ID_ not in group_by_composite:
                 group_by_composite[_ROW_COMPOSITE_ID_] = {}
 
@@ -83,7 +127,7 @@ class PreProcessCsv:
 
                 # first left trim and remove ":" since we subtracted the composite id from the data
                 # then split the data using ":" as the delimiter
-                _A1_ROW_DATA_SPLIT = _PRE_SPLIT_OFFSET_ROW_DATA_.lstrip(":").split(":")
+                _A1_ROW_DATA_SPLIT = _PRE_SPLIT_OFFSET_ROW_DATA_STRIP_.split(":")
                 _A1_ROW_DATA_SPLIT_LEN = len(_A1_ROW_DATA_SPLIT)
 
                 group_by_composite[_ROW_COMPOSITE_ID_][_ROW_SET_ID_] = dict(
@@ -93,7 +137,7 @@ class PreProcessCsv:
                     _el=self._header_block_length,
                     _vl=_A1_ROW_DATA_SPLIT_LEN == self._header_block_length,
                 )
-                pass
+
             else:
                 # TODO: process A2 ~ A4
                 # attach day period indicator
@@ -107,14 +151,21 @@ class PreProcessCsv:
                     # TODO: handle A4 if 30 or 31
                     day_period_indicator = self._data_A4_period
 
+                _DAY_ROW_DATA_ = _PRE_SPLIT_OFFSET_ROW_DATA_STRIP_
+                _DAY_ROW_DATA_SPLIT_ = _DAY_ROW_DATA_.split(":")
+
+                _DAY_BLOCK_ = self._extract_days_block(
+                    day_row=_DAY_ROW_DATA_SPLIT_,
+                    parent_row=_ROW_DATA_SPLIT_
+                )
+
                 group_by_composite[_ROW_COMPOSITE_ID_][_ROW_SET_ID_] = dict(
                     _i=_ROW_LINE_,
-                    _r=_PRE_SPLIT_OFFSET_ROW_DATA_,
                     _dp=day_period_indicator,
+                    # _r=_PRE_SPLIT_OFFSET_ROW_DATA_,
+                    _db=_DAY_BLOCK_
                 )
-                pass
+        return group_by_composite
 
-        print(json.dumps(group_by_composite, indent=4, ensure_ascii=False))
-
-    def process_to_workable_format(self):
+    def to_readable_format(self):
         return self._process_format()
