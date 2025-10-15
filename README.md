@@ -15,19 +15,14 @@ For Docs please read the [Clickup Docs](https://app.clickup.com/90161147485/v/dc
 ```
 
 ### Commands
-Use only one set of data and get the rows.
+When using small set of data
 ```bash
-uv run main.py --slim --get_rows <A1 ~ A4> or A1,A2,A3,A4
+uv run main.py --slim --pre_process
 ```
 
-Use full set of data and get the rows.
+When using full set of data
 ```bash
-uv run main.py --get_rows <A1 ~ A4> or A1,A2,A3,A4
-```
-
-Use get rows and parse the selected rows.
-```bash
-uv run main.py --get_rows <A1 ~ A4> or A1,A2,A3,A4 --parse_rows
+uv run main.py --pre_process
 ```
 
 ## Roadmap
