@@ -7,11 +7,15 @@ For Docs please read the [Clickup Docs](https://app.clickup.com/90161147485/v/dc
 ## Code Source
 ```php
 .
-├── csv_reader.py # digiviewer data parser
-├── data.csv # full set of data
-├── data_small.csv # only one set of data
+├── data/
+│   └── mock/
+│       ├── data.csv # full set of data
+│       └── data_small.csv # 1 set of data
+├── data_set_initializer.py # for file validation 
+├── pre_process_csv.py # for pre processing to a readable format
 ├── main.py # entrypoint 
 └── pyproject.toml # for uv
+
 ```
 
 ### Commands
