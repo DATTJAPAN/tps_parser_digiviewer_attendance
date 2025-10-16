@@ -10,7 +10,7 @@ class DataSetInitializer:
     """
     # Default dataset paths
     _default_small_data_set_path = './data/mock/data_small.csv'
-    _default_big_data_set_path = 'data/mock/data.csv'
+    _default_big_data_set_path = 'data/mock/data_30.csv'
     _default_file_encoding = 'cp932'  # 'cp932', 'shift_jis', etc.
 
     def __init__(self, use_slim_data_set: Optional[bool] = None, desired_encoding: Optional[str] = 'cp932') -> None:
@@ -21,7 +21,6 @@ class DataSetInitializer:
             False -> use full dataset
             None -> leave dataset uninitialized
         """
-        # self.
 
         if desired_encoding is None:
             self.desired_encoding = self._default_file_encoding
@@ -42,10 +41,10 @@ class DataSetInitializer:
         file_encoding = result.encoding
 
         print(f"")
-        print(f"==================================")
+        print(f"===========================================")
         print(f"Detected encoding: {file_encoding}")
         print(f"Expected encoding: {self.desired_encoding}")
-        print(f"==================================")
+        print(f"===========================================")
         print(f"")
 
         if file_encoding != self.desired_encoding:

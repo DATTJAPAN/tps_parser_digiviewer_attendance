@@ -1,7 +1,8 @@
 import argparse
-from pprint import pprint
+from pprint import pprint, PrettyPrinter
 from data_set_initializer import DataSetInitializer
 from pre_process_csv import PreProcessCsv
+import timeit
 
 
 def main():
@@ -27,8 +28,20 @@ def main():
     pre_processor = PreProcessCsv(file_path=_data_path, encoding=_data_encoding)
 
     if _call_pre_process_csv_:
-        result = pre_processor.to_readable_format()
-        pprint(result, width=200, compact=True)
+        # Define the callable
+        def run_parser():
+            result = pre_processor.to_readable_format()
+            pprint(result, sort_dicts=False, width=200, compact=True)
+
+
+        # Measure the actual execution
+        execution_time = timeit.timeit(run_parser, number=1)
+
+        print("")
+        print("=================================================")
+        print(f"Execution time: {execution_time:.4f} seconds")
+        print("=================================================")
+        print("")
 
 
 if __name__ == "__main__":
