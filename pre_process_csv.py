@@ -56,7 +56,7 @@ class PreProcessCsv:
     _data_A3_period: str = '11_20'
     _data_A4_period: str = '21_30'
     _data_A4_period_ext: str = '21_31'
-    _data_anchor_point: str = ["月", "火", "水", "木", "金", "土", "日"]
+    _data_anchor_point: List[str] = ["月", "火", "水", "木", "金", "土", "日"]
 
     def __init__(
             self,
@@ -111,10 +111,9 @@ class PreProcessCsv:
         if block is None:
             raise ValueError("Block cannot be empty")
 
-        if len(block) == 13:
-            last_element = block[-1]
-            block.insert(10, last_element)  # add to the last
-            block.pop()  # remove the last after injecting to the new position
+        last_element = block[-1]
+        block.insert(10, last_element)
+        block.pop()
 
         return block
 
@@ -190,7 +189,6 @@ class PreProcessCsv:
                 group_by_composite[_ROW_COMPOSITE_ID_] = {}
 
             if _ROW_SET_ID_ == "A1":
-                # TODO: process A1
                 # since the A1 doesn't have uncertainty in inputs unlike A2 ~ A4
                 # we can just split it normally
 
@@ -199,16 +197,16 @@ class PreProcessCsv:
                 _A1_ROW_DATA_SPLIT = _PRE_SPLIT_OFFSET_ROW_DATA_STRIP_.split(":")
                 _A1_ROW_DATA_SPLIT_LEN = len(_A1_ROW_DATA_SPLIT)
 
-                group_by_composite[_ROW_COMPOSITE_ID_][_ROW_SET_ID_] = dict(
-                    _i=_ROW_LINE_,
-                    _r=_A1_ROW_DATA_SPLIT,
-                    _rd=self._process_a1_row(_A1_ROW_DATA_SPLIT),
-                    _rl=_A1_ROW_DATA_SPLIT_LEN,
-                    _el=self._header_block_length,
-                    _vl=_A1_ROW_DATA_SPLIT_LEN == self._header_block_length,
-                )
+                group_by_composite[_ROW_COMPOSITE_ID_][_ROW_SET_ID_] = {
+                    "_i": _ROW_LINE_,
+                    "_r": _A1_ROW_DATA_SPLIT,
+                    "_rd": self._process_a1_row(_A1_ROW_DATA_SPLIT),
+                    "_rl": _A1_ROW_DATA_SPLIT_LEN,
+                    "_el": self._header_block_length,
+                    "_vl": _A1_ROW_DATA_SPLIT_LEN == self._header_block_length,
+                }
+
             else:
-                # TODO: process A2 ~ A4
                 # attach day period indicator
                 day_period_indicator = "?_?"
 
@@ -227,12 +225,12 @@ class PreProcessCsv:
                     parent_row=_ROW_DATA_SPLIT_
                 )
 
-                group_by_composite[_ROW_COMPOSITE_ID_][_ROW_SET_ID_] = dict(
-                    _i=_ROW_LINE_,
-                    _dp=day_period_indicator,
-                    _db=extract_day_block,
-                    _dbd=extracted_day_block_as_dict
-                )
+                group_by_composite[_ROW_COMPOSITE_ID_][_ROW_SET_ID_] = {
+                    "_i": _ROW_LINE_,
+                    "_dp": day_period_indicator,
+                    "_db": extract_day_block,
+                    "_dbd": extracted_day_block_as_dict
+                }
 
         return group_by_composite
 
