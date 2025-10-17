@@ -1,6 +1,6 @@
 import os
 from typing import Optional, Tuple
-from charset_normalizer import detect, from_path
+from charset_normalizer import from_path
 
 
 class DataSetInitializer:
@@ -8,65 +8,82 @@ class DataSetInitializer:
     Initializes dataset configuration and file path.
     Supports slim, full, or custom datasets.
     """
-    # Default dataset paths
-    _default_small_data_set_path = './data/mock/data_small.csv'
-    _default_big_data_set_path = 'data/mock/data_30.csv'
-    _default_file_encoding = 'cp932'  # 'cp932', 'shift_jis', etc.
+    DEFAULT_SMALL_DATASET_PATH = './data/mock/data_small.csv'
+    DEFAULT_BIG_DATASET_PATH = 'data/mock/data_30.csv'
+    DEFAULT_FILE_ENCODING = 'cp932'
 
-    def __init__(self, use_slim_data_set: Optional[bool] = None, desired_encoding: Optional[str] = 'cp932') -> None:
+    def __init__(
+            self,
+            use_slim_data_set: Optional[bool] = None,
+            desired_encoding: Optional[str] = 'cp932'
+    ) -> None:
         """
         Initialize the dataset configuration.
-        :param use_slim_data_set:
-            True -> use small dataset
-            False -> use full dataset
-            None -> leave dataset uninitialized
-        """
 
-        if desired_encoding is None:
-            self.desired_encoding = self._default_file_encoding
-        else:
-            self.desired_encoding = desired_encoding
+        Args:
+            use_slim_data_set: True for small dataset, False for full dataset, None for uninitialized
+            desired_encoding: Expected file encoding (default: cp932)
+        """
+        self.desired_encoding = desired_encoding or self.DEFAULT_FILE_ENCODING
 
         if use_slim_data_set is None:
             self.data_set_type = None
             self.data_set_path = None
         else:
-            self.data_set_type = 'slim' if use_slim_data_set else 'full'
-            self.data_set_path = os.path.abspath(
-                self._default_small_data_set_path if use_slim_data_set else self._default_big_data_set_path
+            self._initialize_default_dataset(use_slim_data_set)
+
+    def _initialize_default_dataset(self, use_slim: bool) -> None:
+        """Initialize with default slim or full dataset."""
+        self.data_set_type = 'slim' if use_slim else 'full'
+        dataset_path = self.DEFAULT_SMALL_DATASET_PATH if use_slim else self.DEFAULT_BIG_DATASET_PATH
+        self.data_set_path = os.path.abspath(dataset_path)
+
+    def _validate_encoding(self) -> str:
+        """
+        Validate that file encoding matches desired encoding.
+
+        Returns:
+            str: The detected file encoding
+
+        Raises:
+            Exception: If encoding doesn't match expected encoding
+        """
+        result = from_path(self.data_set_path).best()
+        detected_encoding = result.encoding
+
+        print(f"\n{'=' * 43}")
+        print(f"Detected encoding: {detected_encoding}")
+        print(f"Expected encoding: {self.desired_encoding}")
+        print(f"{'=' * 43}\n")
+
+        if detected_encoding != self.desired_encoding:
+            raise Exception(
+                f"Expected encoding {self.desired_encoding} but got {detected_encoding}"
             )
 
-    def _ensure_encoding_match_desired(self):
-        result = from_path(self.data_set_path).best()
-        file_encoding = result.encoding
+        return detected_encoding
 
-        print(f"")
-        print(f"===========================================")
-        print(f"Detected encoding: {file_encoding}")
-        print(f"Expected encoding: {self.desired_encoding}")
-        print(f"===========================================")
-        print(f"")
-
-        if file_encoding != self.desired_encoding:
-            raise Exception(f"Expected encoding {self.desired_encoding} but got {result.encoding}")
-        else:
-            return file_encoding
-
-    def set_custom_data_set(self, path: str):
+    def set_custom_data_set(self, path: str) -> None:
         """
         Set a custom dataset path.
-        :param path: Path to the custom dataset file
+
+        Args:
+            path: Path to the custom dataset file
         """
         self.data_set_type = 'custom'
         self.data_set_path = os.path.abspath(path)
 
-    def get_data_config(self) -> tuple[str, str, str]:
+    def get_data_config(self) -> Tuple[str, str, str]:
         """
         Retrieve the dataset configuration.
-        :return: Tuple of (dataset type, absolute file path)
-        :raises Exception: if no dataset is set
+
+        Returns:
+            Tuple of (dataset type, absolute file path, encoding)
+
+        Raises:
+            Exception: If no dataset is set
         """
         if self.data_set_type is None or self.data_set_path is None:
             raise Exception("No dataset is set.")
 
-        return self.data_set_type, self.data_set_path, self._ensure_encoding_match_desired()
+        return self.data_set_type, self.data_set_path, self._validate_encoding()

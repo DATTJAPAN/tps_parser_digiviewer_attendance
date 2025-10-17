@@ -1,52 +1,94 @@
 import argparse
-from pprint import pprint, PrettyPrinter
+import timeit
+from pprint import pprint
+
 from data_set_initializer import DataSetInitializer
 from pre_process_csv import PreProcessCsv
-import timeit
 
 
-def main():
-    parser = argparse.ArgumentParser(description='DigiViewer')
-    parser.add_argument('--slim', action='store_true')
-    parser.add_argument('--dataset_path', action='store', type=str, default=None)
-    parser.add_argument('--pre_process', action='store_true')
+def parse_arguments() -> argparse.Namespace:
+    """Parse and return command line arguments."""
+    parser = argparse.ArgumentParser(
+        description='DigiViewer TPS Parser for Attendance Data'
+    )
+    parser.add_argument(
+        '--slim',
+        action='store_true',
+        help='Use slim/small dataset for testing'
+    )
+    parser.add_argument(
+        '--dataset_path',
+        type=str,
+        default=None,
+        help='Path to custom dataset file'
+    )
+    parser.add_argument(
+        '--pre_process',
+        action='store_true',
+        help='Run pre-processing and display results'
+    )
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    # args var
-    _is_slim_ = args.slim
-    _is_trying_custom_dataset_ = args.dataset_path is not None
-    _call_pre_process_csv_ = args.pre_process
 
-    if _is_trying_custom_dataset_:
-        print(f"\nUsing custom data set: {_is_trying_custom_dataset_}")
-        data_set_initializer = DataSetInitializer()
-        data_set_initializer.set_custom_data_set(args.dataset_path)
-    elif _is_slim_:
-        print("\nUsing slim data set.")
-        data_set_initializer = DataSetInitializer(_is_slim_)
+def initialize_dataset(args: argparse.Namespace) -> DataSetInitializer:
+    """
+    Initialize the dataset based on command line arguments.
+
+    Args:
+        args: Parsed command line arguments
+
+    Returns:
+        DataSetInitializer: Configured dataset initializer
+    """
+    if args.dataset_path:
+        print(f"\nUsing custom dataset: {args.dataset_path}")
+        initializer = DataSetInitializer()
+        initializer.set_custom_data_set(args.dataset_path)
+    elif args.slim:
+        print("\nUsing slim dataset.")
+        initializer = DataSetInitializer(use_slim_data_set=True)
     else:
-        print("\nUsing full data set.")
-        data_set_initializer = DataSetInitializer(False)
+        print("\nUsing full dataset.")
+        initializer = DataSetInitializer(use_slim_data_set=False)
 
-    _data_type, _data_path, _data_encoding = data_set_initializer.get_data_config()
+    return initializer
 
-    pre_processor = PreProcessCsv(file_path=_data_path, encoding=_data_encoding)
 
-    if _call_pre_process_csv_:
-        # Define the callable
-        def run_parser():
-            result = pre_processor.to_readable_format()
-            pprint(result, sort_dicts=False, width=200, compact=True)
+def run_preprocessing(pre_processor: PreProcessCsv) -> None:
+    """
+    Run the preprocessing and display results with timing information.
 
-        # Measure the actual execution
-        execution_time = timeit.timeit(run_parser, number=1)
+    Args:
+        pre_processor: Configured PreProcessCsv instance
+    """
 
-        print("")
-        print("=================================================")
-        print(f"Execution time: {execution_time:.4f} seconds")
-        print("=================================================")
-        print("")
+    def run_parser():
+        result = pre_processor.to_readable_format()
+        pprint(result, sort_dicts=False, width=200, compact=True)
+
+    # Measure execution time
+    execution_time = timeit.timeit(run_parser, number=1)
+
+    print(f"\n{'=' * 49}")
+    print(f"Execution time: {execution_time:.4f} seconds")
+    print(f"{'=' * 49}\n")
+
+
+def main() -> None:
+    """Main entry point for the DigiViewer TPS Parser."""
+    args = parse_arguments()
+
+    # Initialize dataset
+    data_initializer = initialize_dataset(args)
+    data_type, data_path, data_encoding = data_initializer.get_data_config()
+
+    # Initialize preprocessor
+    pre_processor = PreProcessCsv(file_path=data_path, encoding=data_encoding)
+
+    # Run preprocessing if requested
+    if args.pre_process:
+        run_preprocessing(pre_processor)
 
 
 if __name__ == "__main__":
