@@ -1,9 +1,10 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import pandas as pd
 from pydantic import BaseModel
 
 
 class PreProcessA1Header(BaseModel):
+    """Model for A1 header row containing employee and contract information."""
     record_composite_id: str  # 1
     uf_2__: str  # 2 - part of the composite id
     dispatch_code: str  # 3
@@ -33,6 +34,7 @@ class PreProcessA1Header(BaseModel):
 
 
 class PreProcessA2A3A4Header(BaseModel):
+    """Model for A2/A3/A4 header rows containing daily attendance records."""
     day: str  # 1
     uf_2__: int  # 2
     day_of_week: str  # 3
@@ -51,55 +53,53 @@ class PreProcessA2A3A4Header(BaseModel):
 
 
 class PreProcessCsv:
-    _header_block_length: int = 26
-    _data_A2_period: str = '1_10'
-    _data_A3_period: str = '11_20'
-    _data_A4_period: str = '21_30'
-    _data_A4_period_ext: str = '21_31'
-    _data_anchor_point: List[str] = ["月", "火", "水", "木", "金", "土", "日"]
+    """Parser for TPS attendance CSV files with custom format."""
+
+    HEADER_BLOCK_LENGTH = 26
+    DATA_A2_PERIOD = '1_10'
+    DATA_A3_PERIOD = '11_20'
+    DATA_A4_PERIOD = '21_30'
+    DATA_A4_PERIOD_EXT = '21_31'
+    DAY_ANCHORS = ["月", "火", "水", "木", "金", "土", "日"]
 
     def __init__(
             self,
             file_path: Optional[str] = None,
-            encoding: Optional[str] = 'cp932',
+            encoding: str = 'cp932',
     ):
         self.file_path = file_path
         self.encoding = encoding
 
-    def _read_file(self):
+    def _read_file(self) -> pd.DataFrame:
+        """Read CSV file with specified encoding."""
         return pd.read_csv(
             self.file_path,
             header=None,
             encoding=self.encoding,
-            # engine='python',
             encoding_errors="ignore",
         )
 
-    def _process_a1_row(self, row: List[str]) -> dict:
+    def _process_a1_row(self, row: List[str]) -> Dict[str, Any]:
+        """Process A1 header row into structured dictionary."""
         field_names = list(PreProcessA1Header.model_fields.keys())
+        padded_row = row + [None] * max(0, len(field_names) - len(row))
 
-        if len(row) < len(field_names):
-            row = row + [None] * (len(field_names) - len(row))
-
-        data_dict = dict(zip(field_names, row))
+        data_dict = dict(zip(field_names, padded_row))
         model = PreProcessA1Header(**data_dict)
         return model.model_dump()
 
-    def _process_a2_a3_a4_row(self, row: List[str | int | None]) -> dict:
+    def _process_a2_a3_a4_row(self, row: List[str | int | None]) -> Dict[str, Any]:
+        """Process A2/A3/A4 row into structured dictionary."""
         field_names = list(PreProcessA2A3A4Header.model_fields.keys())
         num_fields = len(field_names)
 
-        # If the row has more items than expected → merge extras into last field (index 12)
+        # Merge extra fields into the last field (extra_remarks_or_notes)
         if len(row) > num_fields:
             extras = ''.join(str(x) for x in row[num_fields - 1:] if x not in [None, ''])
-            # Append extras to existing 13th element (index 12)
             row[num_fields - 1] = (
                 f"{row[num_fields - 1]}{extras}" if row[num_fields - 1] not in [None, ''] else extras
             )
-            # Trim to match expected model fields
             row = row[:num_fields]
-
-        # If the row is shorter → pad with None
         elif len(row) < num_fields:
             row = row + [None] * (num_fields - len(row))
 
@@ -107,132 +107,142 @@ class PreProcessCsv:
         model = PreProcessA2A3A4Header(**data_dict)
         return model.model_dump()
 
-    def _modify_day_block(self, block: list[str | int | None] | None = None):
-        if block is None:
+    def _adjust_day_block(self, block: List[str | int | None]) -> List[str | int | None]:
+        """Adjust day block by moving the last element to position 10."""
+        if not block:
             raise ValueError("Block cannot be empty")
 
-        last_element = block[-1]
-        block.insert(10, last_element)
-        block.pop()
+        adjusted_block = block[:-1]
+        adjusted_block.insert(10, block[-1])
+        return adjusted_block
 
-        return block
-
-    def _day_block_to_dict(self, day_block: List[str | int | None]):
-        return self._process_a2_a3_a4_row(day_block)
-
-    def _extract_days_block(self, day_row: List[str] = None, parent_row: List[str] = None):
+    def _extract_days_block(
+            self,
+            day_row: List[str],
+            parent_row: List[str]
+    ) -> tuple[List[List[str | int | None]], List[Dict[str, Any]]]:
+        """Extract and process day blocks from row data."""
         if day_row is None or parent_row is None:
             raise ValueError("Day row and parent row cannot be empty")
 
-        _DAY_BLOCK_ = []
-        _DAY_BLOCK_AS_DICT_ = []
+        day_blocks = []
+        day_blocks_as_dicts = []
+        boundary_tracker = {"start": -1, "next_start": -1}
 
-        # Get the boundaries properly
-        # our anchor of the is the japanese "days" -> 月,火,水,木,金,土,日
-        _DAY_BOUNDARY_TRACKER_ = {"s": -1, "ns": -1}
-        for _index, _value in enumerate(day_row):
-            anchor_found = _value in self._data_anchor_point
+        for index, value in enumerate(day_row):
+            is_anchor = value in self.DAY_ANCHORS
 
-            # Check if the tracker is fully partner
-            if _DAY_BOUNDARY_TRACKER_["s"] != -1 and _DAY_BOUNDARY_TRACKER_["ns"] != -1:
-                modified_row = self._modify_day_block(
-                    parent_row[_DAY_BOUNDARY_TRACKER_["s"]:_DAY_BOUNDARY_TRACKER_["ns"]]
-                )
+            # Process completed block when both boundaries are set
+            if boundary_tracker["start"] != -1 and boundary_tracker["next_start"] != -1:
+                block = parent_row[boundary_tracker["start"]:boundary_tracker["next_start"]]
+                adjusted_block = self._adjust_day_block(block)
 
-                _DAY_BLOCK_.append(modified_row)
-                _DAY_BLOCK_AS_DICT_.append(self._day_block_to_dict(modified_row))
-                # Change the s will get the ns then ns -> -1 so we can start over the other data
-                _DAY_BOUNDARY_TRACKER_["s"] = _DAY_BOUNDARY_TRACKER_["ns"]
-                _DAY_BOUNDARY_TRACKER_["ns"] = -1
+                day_blocks.append(adjusted_block)
+                day_blocks_as_dicts.append(self._process_a2_a3_a4_row(adjusted_block))
 
-            if anchor_found:
-                # Ensure first the first "s" is set"
-                if _DAY_BOUNDARY_TRACKER_["s"] == -1:
-                    _DAY_BOUNDARY_TRACKER_["s"] = _index
-                else:
-                    if _DAY_BOUNDARY_TRACKER_["ns"] == -1:
-                        _DAY_BOUNDARY_TRACKER_["ns"] = _index
+                boundary_tracker["start"] = boundary_tracker["next_start"]
+                boundary_tracker["next_start"] = -1
 
-        # at the last iteration
-        if _DAY_BOUNDARY_TRACKER_["s"] != -1 and _DAY_BOUNDARY_TRACKER_["ns"] == -1:
-            _MODIFIED_DAY_BLOCK = self._modify_day_block(parent_row[_DAY_BOUNDARY_TRACKER_["s"]:])
+            if is_anchor:
+                if boundary_tracker["start"] == -1:
+                    boundary_tracker["start"] = index
+                elif boundary_tracker["next_start"] == -1:
+                    boundary_tracker["next_start"] = index
 
-            _DAY_BLOCK_.append(_MODIFIED_DAY_BLOCK)
-            _DAY_BLOCK_AS_DICT_.append(self._day_block_to_dict(_MODIFIED_DAY_BLOCK))
+        # Process the final block
+        if boundary_tracker["start"] != -1 and boundary_tracker["next_start"] == -1:
+            final_block = parent_row[boundary_tracker["start"]:]
+            adjusted_final_block = self._adjust_day_block(final_block)
 
-        return _DAY_BLOCK_, _DAY_BLOCK_AS_DICT_
+            day_blocks.append(adjusted_final_block)
+            day_blocks_as_dicts.append(self._process_a2_a3_a4_row(adjusted_final_block))
 
-    def _process_format(self):
+        return day_blocks, day_blocks_as_dicts
+
+    def _parse_row_data(self, row_data: str) -> tuple[str, str, str]:
+        """Parse row data to extract set ID, composite ID, and offset data."""
+        row_data = row_data.strip()
+        parts = row_data.split(":", 2)
+
+        set_id = parts[0]
+        composite_id = parts[1]
+
+        # Rebuild composite ID and extract remaining data
+        rebuild_composite_id = f"{composite_id}:{set_id}"
+        offset_data = row_data[len(rebuild_composite_id):].lstrip(":")
+
+        return set_id, composite_id, offset_data
+
+    def _process_a1_set(
+            self,
+            line: int,
+            offset_data: str,
+            row_data_split: List[str]
+    ) -> Dict[str, Any]:
+        """Process A1 set data."""
+        data_split = offset_data.split(":")
+
+        return {
+            "_i": line,
+            "_r": data_split,
+            "_rd": self._process_a1_row(data_split),
+            "_rl": len(data_split),
+            "_el": self.HEADER_BLOCK_LENGTH,
+            "_vl": len(data_split) == self.HEADER_BLOCK_LENGTH,
+        }
+
+    def _process_a2_a3_a4_set(
+            self,
+            line: int,
+            set_id: str,
+            offset_data: str,
+            row_data_split: List[str]
+    ) -> Dict[str, Any]:
+        """Process A2/A3/A4 set data."""
+        period_map = {
+            'A2': self.DATA_A2_PERIOD,
+            'A3': self.DATA_A3_PERIOD,
+            'A4': self.DATA_A4_PERIOD_EXT,
+        }
+        day_period_indicator = period_map.get(set_id, "?_?")
+
+        data_split = offset_data.split(":")
+        day_blocks, day_blocks_as_dicts = self._extract_days_block(data_split, row_data_split)
+
+        return {
+            "_i": line,
+            "_dp": day_period_indicator,
+            "_db": day_blocks,
+            "_dbd": day_blocks_as_dicts
+        }
+
+    def _process_format(self) -> Dict[str, Dict[str, Any]]:
+        """Process the entire CSV file and group by composite ID."""
         df = self._read_file()
-
-        group_by_composite: dict = {}
+        grouped_by_composite = {}
 
         for line, row in enumerate(df.itertuples(index=False), start=1):
-            _ROW_LINE_ = line
-            _ROW_DATA_ = str(row[0]).strip()
-            _ROW_DATA_SPLIT_ = _ROW_DATA_.split(":")
+            row_data = str(row[0])
+            set_id, composite_id, offset_data = self._parse_row_data(row_data)
 
-            # GET SET ID and COMPOSITE ID
-            _ROW_SET_ID_ = _ROW_DATA_SPLIT_[0]
-            _ROW_COMPOSITE_ID_ = _ROW_DATA_SPLIT_[1]
+            # Initialize composite ID group if needed
+            if composite_id not in grouped_by_composite:
+                grouped_by_composite[composite_id] = {}
 
-            # Build the row composite id
-            _REBUILD_ROW_COMPOSITE_ID_ = f"{_ROW_COMPOSITE_ID_}:{_ROW_SET_ID_}"
+            # Process based on set ID
+            row_data_split = row_data.split(":")
 
-            # Get the offset data without using the split to maintain the pre-split data
-            _PRE_SPLIT_OFFSET_ROW_DATA_ = _ROW_DATA_[len(_REBUILD_ROW_COMPOSITE_ID_):-1]
-
-            # Remove the ":" in the beginning of the data
-            _PRE_SPLIT_OFFSET_ROW_DATA_STRIP_ = _PRE_SPLIT_OFFSET_ROW_DATA_.lstrip(":")
-
-            if _ROW_COMPOSITE_ID_ not in group_by_composite:
-                group_by_composite[_ROW_COMPOSITE_ID_] = {}
-
-            if _ROW_SET_ID_ == "A1":
-                # since the A1 doesn't have uncertainty in inputs unlike A2 ~ A4
-                # we can just split it normally
-
-                # first left trim and remove ":" since we subtracted the composite id from the data
-                # then split the data using ":" as the delimiter
-                _A1_ROW_DATA_SPLIT = _PRE_SPLIT_OFFSET_ROW_DATA_STRIP_.split(":")
-                _A1_ROW_DATA_SPLIT_LEN = len(_A1_ROW_DATA_SPLIT)
-
-                group_by_composite[_ROW_COMPOSITE_ID_][_ROW_SET_ID_] = {
-                    "_i": _ROW_LINE_,
-                    "_r": _A1_ROW_DATA_SPLIT,
-                    "_rd": self._process_a1_row(_A1_ROW_DATA_SPLIT),
-                    "_rl": _A1_ROW_DATA_SPLIT_LEN,
-                    "_el": self._header_block_length,
-                    "_vl": _A1_ROW_DATA_SPLIT_LEN == self._header_block_length,
-                }
-
+            if set_id == "A1":
+                grouped_by_composite[composite_id][set_id] = self._process_a1_set(
+                    line, offset_data, row_data_split
+                )
             else:
-                # attach day period indicator
-                day_period_indicator = "?_?"
-
-                if _ROW_SET_ID_ == 'A2':
-                    day_period_indicator = self._data_A2_period
-                elif _ROW_SET_ID_ == 'A3':
-                    day_period_indicator = self._data_A3_period
-                elif _ROW_SET_ID_ == 'A4':
-                    day_period_indicator = self._data_A4_period_ext
-
-                _DAY_ROW_DATA_ = _PRE_SPLIT_OFFSET_ROW_DATA_STRIP_
-                _DAY_ROW_DATA_SPLIT_ = _DAY_ROW_DATA_.split(":")
-
-                extract_day_block, extracted_day_block_as_dict = self._extract_days_block(
-                    day_row=_DAY_ROW_DATA_SPLIT_,
-                    parent_row=_ROW_DATA_SPLIT_
+                grouped_by_composite[composite_id][set_id] = self._process_a2_a3_a4_set(
+                    line, set_id, offset_data, row_data_split
                 )
 
-                group_by_composite[_ROW_COMPOSITE_ID_][_ROW_SET_ID_] = {
-                    "_i": _ROW_LINE_,
-                    "_dp": day_period_indicator,
-                    "_db": extract_day_block,
-                    "_dbd": extracted_day_block_as_dict
-                }
+        return grouped_by_composite
 
-        return group_by_composite
-
-    def to_readable_format(self):
+    def to_readable_format(self) -> Dict[str, Dict[str, Any]]:
+        """Convert CSV to readable structured format grouped by composite ID."""
         return self._process_format()
